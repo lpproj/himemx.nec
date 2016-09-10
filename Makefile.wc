@@ -1,0 +1,45 @@
+#
+# Makefile for (Open)Watcom's wmake.
+# to build:
+#   wmake -h -f Makefile.wc
+#
+
+.ERASE
+
+!ifdef __UNIX__
+D=/
+!else
+D=\
+
+!endif
+
+RM=rm
+MKDIR=mkdir
+
+AS=jwasm
+AFLAGS= -nologo -mz -Sg -Sn
+
+
+.before:
+	@-$(MKDIR) ibmpc
+	@-$(MKDIR) nec98
+
+
+all: ibmpc nec98 .SYMBOLIC
+
+ibmpc: ibmpc$(D)himemx.exe .SYMBOLIC
+
+nec98: nec98$(D)himemx.exe .SYMBOLIC
+
+
+clean: .SYMBOLIC
+	-$(RM) -f ibmpc$(D)himemx.exe
+	-$(RM) -f nec98$(D)himemx.exe
+
+ibmpc$(D)himemx.exe : source$(D)himemx.asm
+	$(AS) $(AFLAGS) -DIBMPC -Fo$^@ $[@
+
+nec98$(D)himemx.exe : source$(D)himemx.asm
+	$(AS) $(AFLAGS) -DNEC98 -Fo$^@ $[@
+
+
