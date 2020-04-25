@@ -27,19 +27,24 @@ AFLAGS= -nologo -mz -Sg -Sn
 
 all: ibmpc nec98 .SYMBOLIC
 
-ibmpc: ibmpc$(D)himemx.exe .SYMBOLIC
+ibmpc: ibmpc$(D)himemx.exe ibmpc$(D)himemx2.exe .SYMBOLIC
 
-nec98: nec98$(D)himemx.exe .SYMBOLIC
+nec98: nec98$(D)himemx.exe nec98$(D)himemx2.exe .SYMBOLIC
 
 
 clean: .SYMBOLIC
-	-$(RM) -f ibmpc$(D)himemx.exe
-	-$(RM) -f nec98$(D)himemx.exe
+	-$(RM) -f ibmpc$(D)himemx.exe ibmpc$(D)himemx2.exe
+	-$(RM) -f nec98$(D)himemx.exe nec98$(D)himemx2.exe
 
 ibmpc$(D)himemx.exe : source$(D)himemx.asm
 	$(AS) $(AFLAGS) -DIBMPC -Fo$^@ $[@
 
+ibmpc$(D)himemx2.exe : source$(D)himemx.asm
+	$(AS) $(AFLAGS) -D?ALTSTRAT=1 -DIBMPC -Fo$^@ $[@
+
 nec98$(D)himemx.exe : source$(D)himemx.asm
 	$(AS) $(AFLAGS) -DNEC98 -Fo$^@ $[@
 
+nec98$(D)himemx2.exe : source$(D)himemx.asm
+	$(AS) $(AFLAGS) -D?ALTSTRAT=1 -DNEC98 -Fo$^@ $[@
 

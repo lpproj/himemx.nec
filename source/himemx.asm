@@ -318,6 +318,9 @@ hma_exists				db 0
 ;--- constants
 
 szStartup   	DB 'HimemX ', VERSIONSTR, ' [', @CatStr(!"%@Date!"), '] (c) 1995 Till Gerken, 2001-2006 tom ehlert',  0aH,  00H
+IFDEF NEC98
+szStartup98		DB 'NEC PC-98 version (c) 2016-2020 sava', 0aH, 00H
+ENDIF
 szQuestion		DB '/?',  00H
 szCannot		DB 'Option /? cannot be used as a device driver.',  0aH, 'Please'
 				DB ' run HimemX /? from the commandline',  00H
@@ -337,14 +340,18 @@ szNOABOVE16		DB '/NOABOVE16',  00H
 szX2MAX32		DB '/X2MAX32',  00H
 szNOX2MAX32		DB '/NOX2MAX32',  00H
 szX				DB '/X',  00H
+IFNDEF NEC98
 szMETHOD		DB '/METHOD:',  00H
+ENDIF ; !NEC98
 szMAX			DB '/MAX=',  00H
 szMaximum		DB 'Maximum XMS: %luK',  0aH,  00H
 szHMAMIN		DB '/HMAMIN=',  00H
 szMinimum		DB 'Minimum HMA that has to be requested: %uK',  0aH,  00H
 szHMAMAX		DB 'HimemX: HMAMIN must be <= 63, corrected',  0aH,  00H
+IFNDEF NEC98
 szINT151		DB '/INT15=',  00H
 szINT152		DB 'HimemX: /INT15=%x - not implemented',  07H,  0aH,  00H
+ENDIF ; NEC98
 szignored		DB 'ignored commandline <%s>',  0aH,  00H
 ;cant_disable_message db 'Can',27h,'t disable A20 - ignored',0dh,0ah,'$'
 
@@ -352,11 +359,13 @@ dHimem			db 'HimemX: $'
 
 ;-- method feedback text
 
+IFNDEF NEC98
 szKBC			db "KBC",'$'
 szPS2			db "PS/2",'$'
 szFast	  		db "Fast",'$'
 szBIOS  		db "BIOS",'$'
 szPort92 		db "Port 92",'$'
+ENDIF ; !NEC98
 szA20			db " A20 method used",13,10,'$'
 szAlwaysOn		db 'Always on','$'
 MsgUnknownA20	db 'No Supported A20 method detected',0dh,0ah,'$'
@@ -370,6 +379,7 @@ a20_error		db 'Unable to switch A20 address line.$'
 xms_toosmall	db 'Extended memory is too small or not available.$'
 error_msg		db 'Driver won''t be installed.',7,13,10,'$'
 
+IFNDEF NEC98
 methods label byte
 	db 3,"kbc"       ;0 (A20_KBC)
 	db 3,"ps2"       ;1 (A20_PS2)
@@ -378,6 +388,7 @@ methods label byte
 	db 4,"fast"      ;4
 	db 6,"port92"    ;5
 	db 0
+ENDIF ; !NEC98
 
 if ?TESTMEM
 ?TMSTR equ <" [/TESTMEM:ON|OFF]">
@@ -394,10 +405,16 @@ szHello label byte
 	db "Extended memory host for DOS (coordinates the usage of XMS and HMA)",10
 	db "HimemX is a device driver that is loaded in CONFIG.SYS.",10
 	db "Please place DEVICE=HIMEMX.EXE [options] before any driver using XMS.",10,10
+IFDEF NEC98
+	db "options: [/MAX=####] [/HMAMIN=n] [/NUMHANDLES=m]",?TMSTR,10
+	db " [/VERBOSE]",?LGSTR,10,10
+ELSE
 	db "options: [/MAX=####] [/METHOD:xxx] [/HMAMIN=n] [/NUMHANDLES=m]",10
 	db ?TMSTR," [/VERBOSE] [/NOABOVE16] [/X]",?LGSTR,10,10
+ENDIF ; NEC98
 	db "  /MAX=#####      limit memory controlled by XMM to #####K.",10
 	db "                  The HMA is not affected by this value, it's always included",10
+IFNDEF NEC98
 	db "  /METHOD:xxx     Specifies the method to be used for A20 handling.",10
 	db "                  Possible values for xxx:",10
 	db "                  ALWAYSON    Assume that A20 line is permanently ON",10
@@ -406,6 +423,7 @@ szHello label byte
 	db "                  PS2         Use port 92h, bypass PS/2 test",10
 	db "                  KBC         Use the keyboard controller",10
 	db "                  PORT92      Use port 92h always",10
+ENDIF ; !NEC98
 	db "  /HMAMIN=n       Specifies minimum number of Kbs of HMA that a program",10
 	db "                  must request to gain access to the HMA (default: 0Kb)",10
 	db "  /NOX2MAX32      No limit for XMS 2.0 free/avail. memory reports (default)",10
@@ -414,8 +432,10 @@ if ?TESTMEM
 	db "  /TESTMEM:ON|OFF Performs or skips an extended memory test (def: OFF)",10
 endif
 	db "  /VERBOSE        Gives extra information",10 
+IFNDEF NEC98
 	db "  /NOABOVE16      Do not use INT 15h function E801h to detect >64M",10
 	db "  /X              Do not use INT 15h function E820h to detect >64M",10
+ENDIF ; !NEC98
 	db "  /X2MAX32        Limit XMS 2.0 free/avail. memory report to 32M-1K",10
 if ?LOG
 	db "  /LOG            Logs the driver activity to the screen",10
@@ -570,6 +590,7 @@ disable_enable_a20 endp
 ; this externally preserves A20 state on function 87h
 ;
 
+IFDEF IBMPC
 int15_handler proc
 	cmp ah,87h
 	je do_move
@@ -601,6 +622,36 @@ isdisabled:
 	jmp exit_set_reset_carry
 
 int15_handler endp
+ENDIF ; IBMPC
+
+IFDEF NEC98
+int1f_handler proc
+	cmp ah,90h
+	je do_move
+	db 0EAh
+old_int1f	dd 0		; old INT 1Fh vector (reuse same name for IBMPC)
+
+do_move:
+	pushf
+	call test_a20
+	jz isdisabled
+	call cs:[old_int1f]
+	call enable_a20 	 ; preserves flags
+	jmp exit_set_reset_carry
+isdisabled:
+	call cs:[old_int1f]
+	call disable_a20	 ; preserves flags
+exit_set_reset_carry:
+	push bp
+	mov bp,sp
+	rcr [bp+2].IRETS.bFlags,1
+	rol [bp+2].IRETS.bFlags,1
+	pop bp
+	iret
+
+int1f_handler endp
+ENDIF ; NEC98
+
 
 ;******************************************************************************
 ; new INT2Fh handler. Catches Func. 4300h+4310h
@@ -626,7 +677,11 @@ old_int2f dd 0            ; old INT 2fh vector
 	jne @@jmp_old2f
 	mov al,ah		;al==43h if function supported
 machine_type label byte    
+IFDEF NEC98
+	mov bx,0001		; NEC PC-98x1 HIMEM.SYS
+ELSE
 	mov bx,0002		;bh=switch time; 0=medium, 1=fast, 2=slow
+ENDIF
 	popf			;bl=machine type; 01=std AT (KBC), 02=PS/2 (port 92)
 	iret
 @@get_driver_installed:
@@ -1526,6 +1581,7 @@ pmcopy:
 	push eax
 	push eax
 
+IFDEF IBMPC
 	push si
 	lea si,[esp+2]
 	shr cx,1		; convert to words
@@ -1544,6 +1600,21 @@ else
 	int 15h
 endif
 	pop si
+ENDIF ; IBMPC
+IFDEF NEC98
+	push bx
+	push bp
+	mov bp,sp
+	lea bx,[bp+4]
+	pop bp
+	push esi
+	push edi
+	mov ah,90h
+	int 1fh
+	pop edi
+	pop esi
+	pop bx
+ENDIF ; NEC98
 	lea sp,[esp+6*8];don't modify flags!
 	ret
 
@@ -2039,9 +2110,13 @@ endif
 	lods  @byte cs:[si]
 	cmp al, 0 				   ; end of string?
 	je @@done
+IFDEF IBMPC
 	mov ah,0Eh
 	mov bx,0007h
 	int 10h
+ELSE
+	int 29h
+ENDIF ; IBMPC
 	jmp @@nextitem
 @@done:
 	mov [bp+16],si
@@ -2083,11 +2158,21 @@ if ?LOG
 ;*** SCROLL_LOCK is locked
 
 lognow proc
+IFDEF IBMPC
 	push ds
 	push 40h
 	pop ds
 	test @byte ds:[17h],10h
 	pop ds
+ELSEIFDEF NEC98
+	push ds
+	push 0000h
+	pop ds
+	test @byte ds:[053Ah],10h	; CTRL
+	pop ds
+ELSE
+	test al,0	; always set ZF if not IBMPC
+ENDIF
 	ret
 lognow endp
 
@@ -2128,6 +2213,7 @@ _TEXT segment
 
 startoftext label byte
 
+IFDEF IBMPC
 ;******************************************************************************
 ; checks if VDISK is already installed
 ; note: HMA check is skipped because of speed and some other (weird) reasons.
@@ -2156,6 +2242,7 @@ _install_check_vdisk proc
 	pop bx
 	ret
 _install_check_vdisk endp
+ENDIF ; IBMPC
 
 ; checks if CPU is a 386
 ; In:   nothing
@@ -2206,6 +2293,39 @@ check_a20 endp
 
 endif
 
+IFDEF NEC98
+; NEC PC-98x1 (386+) fast A20
+; entry: ah == 0 A20 turn off, ah == 2 turn on, ax on stack
+disable_enable_a20_nec386 proc
+	mov al,3
+	test ah,ah
+	jz @@dean_out
+	mov al,2
+@@dean_out:
+	out 0f6h,al		; A20 control (03h=disable, 02h=enable)
+	out 5fh,al		; HW wait (at least 600ns)
+	pop ax
+	ret
+size_disable_enable_a20_nec386 equ $ - disable_enable_a20_nec386
+disable_enable_a20_nec386 endp
+
+flag_nec386:
+	mov si,offset disable_enable_a20_nec386
+	mov cx,size_disable_enable_a20_nec386
+	push di
+	push es
+	push cs
+	pop es
+	mov di,offset disable_enable_a20
+	rep movsb
+	pop es
+	pop di
+	clc
+	ret
+
+ENDIF ; NEC98
+
+IFDEF IBMPC
 ;--- there are 3 A20 switch procs:
 ;--- 1. KBC (port 64h/60h)
 ;--- 2. fast, ps2, port92 (port 92h)
@@ -2442,6 +2562,8 @@ detect_KBC proc
 
 detect_KBC endp
 
+ENDIF ; IBMPC
+
 ; upon entry si->disable/enable routine for a20 method being tested
 ; return carry set if failed, reset if success
 ;
@@ -2493,6 +2615,8 @@ detect_and_handle_test endp
 
 A20MAX = 0
 
+IFDEF IBMPC
+
 IF A20MAX lt size_disable_enable_a20_fast
 A20MAX = size_disable_enable_a20_fast
 ENDIF
@@ -2504,6 +2628,16 @@ ENDIF
 IF A20MAX lt size_disable_enable_a20_KBC
 A20MAX = size_disable_enable_a20_KBC
 ENDIF
+
+ENDIF ; IBMPC
+
+IFDEF NEC98
+
+IF A20MAX lt size_disable_enable_a20_nec386
+A20MAX = size_disable_enable_a20_nec386
+ENDIF
+
+ENDIF ; NEC98
 
 ;--- @display %A20MAX
 
@@ -2628,6 +2762,7 @@ seta20method proc
 	mov al,[_method]
 	cmp al,A20_ALWAYSON
 	je @@is_alwayson
+IFDEF IBMPC
 	cmp al,A20_BIOS
 	je @@is_bios
 	cmp al,A20_FAST
@@ -2638,6 +2773,7 @@ seta20method proc
 	je @@is_kbc
 	cmp al,A20_PORT92
 	je @@is_port92
+ENDIF ; IBMPC
 
 ; check if the A20 line is on, if so assume it's always on
 	call test_a20
@@ -2655,6 +2791,7 @@ seta20method proc
 
 @@check_A20_method:
 
+IFDEF IBMPC
 	call detect_fast; see if port 92h (2403h BIOS call) handler supported	
 	jnc @@is_fast
 
@@ -2675,6 +2812,10 @@ seta20method proc
 ;  reported to crash some machines which don't support that method
 	call detect_port92
 	jnc @@is_port92
+ENDIF ; IBMPC
+IFDEF NEC98
+	jmp short @@is_nec386
+ENDIF ; NEC98
 
 ; out of options to try, return error
 
@@ -2683,6 +2824,7 @@ seta20method proc
 	stc
 	ret
 
+IFDEF IBMPC
 @@is_bios:
 	call flag_bios
 	jmp @@got_type
@@ -2697,6 +2839,12 @@ seta20method proc
 	jmp @@got_type
 @@is_port92:
 	call flag_port92
+ENDIF ; IBMPC
+IFDEF NEC98
+@@is_nec386:
+	call flag_nec386
+	;jmp @@got_type
+ENDIF ; NEC98
 @@got_type:
 	clc
 	ret
@@ -2750,9 +2898,20 @@ DoCommandline proc
 	jz @@done
 	cmp al,10
 	jz @@done
+IFDEF NEC98
+	; workaround for NEC PC-98 version of MS-DOS
+	; (null char is used for delimiter in config.sys)
+	test al,al
+	jnz @@nextitem3
+	mov al,20h
+@@nextitem3:
+	stosb
+	loop @@nextitem2
+ELSE
 	stosb
 	and al,al
 	loopnz @@nextitem2
+ENDIF ; NEC98
 @@done:
 	mov al,0
 	stosb
@@ -2823,6 +2982,7 @@ handle_char proc
 	ret
 handle_char endp
 
+IFNDEF NEC98
 ;--- get the A20 method ("/METHOD:xxx")
 ;--- int _stdcall GetA20Method(char * pszMethod)
 
@@ -2873,6 +3033,7 @@ _GetA20Method proc
 	ret
 
 _GetA20Method endp
+ENDIF ; !NEC98
 
 ;--- convert long to string
 ;--- _stdcall ltob(long num, char * psz, int base);
@@ -3362,6 +3523,11 @@ pszCmdLine equ <bp+6>
 	push offset szStartup
 	call _printf
 	pop bx
+IFDEF NEC98
+	push offset szStartup98
+	call _printf
+	pop bx
+ENDIF
 
 	push offset szQuestion	;/?
 	call _FindCommand
@@ -3471,6 +3637,7 @@ endif
 	mov _x_option,1
 @@I259:
 
+IFNDEF NEC98
 	push offset szMETHOD
 	call _FindCommand
 	or ax,ax
@@ -3480,6 +3647,7 @@ endif
 	call _GetA20Method
 
 	mov _method,al
+ENDIF ; NEC98
 @@I261:
 
 	push offset szMAX
@@ -3537,6 +3705,7 @@ endif
 	shl _hma_min,10
 @@I267X:
 
+IFNDEF NEC98
 	push offset szINT151
 	call _FindCommand
 	or ax,ax
@@ -3551,6 +3720,7 @@ endif
 	push offset szINT152
 	call _printf
 	add sp,4
+ENDIF ; !NEC98
 
 @@I273:
 	push si
@@ -3656,9 +3826,13 @@ e820_nextitem:   ; ebx offset is updated with each successive int 15h
 	mov mmap.baselow,eax   ; insurance against buggy BIOS
 	mov mmap.type_,eax
 	mov mmap.lenlow,eax
+IFDEF NEC98
+	call fake_int15_e820
+ELSE
 	mov ax,0e820h
 	clc
 	int 15h
+ENDIF
 	setc dl 		; keep carry flag status
 	cmp eax,SMAP
 	jne e820_bad	; failure
@@ -3700,8 +3874,12 @@ e820_done:
 	mov bx,ax
 	mov cx,ax
 	mov dx,ax
+IFDEF NEC98
+	call fake_int15_e801
+ELSE
 	mov ax,0e801h
 	int 15h
+ENDIF
 	jc @@try_88h
 	mov ax,cx
 	or ax,dx
@@ -3729,8 +3907,12 @@ e820_done:
 	@DbgOutS <"geti15mem: get extended memory with int 15, 88",13,10>
 
 	clc
+IFDEF NEC98
+	call fake_int15_88
+ELSE
 	mov ah,88h
 	int 15h
+ENDIF ; NEC98
 	movzx eax,ax
 @@done:
 	mov edx, 1024
@@ -3781,10 +3963,11 @@ initialize proc
 	mov dx,offset a20_error
 	jc @@error_exit
 
+IFDEF IBMPC
 	call _install_check_vdisk	; is VDISK installed?
 	mov dx,offset vdisk_detected
 	jz @@error_exit
-
+ENDIF
 
 	mov ax,cs				; setup descriptors
 ;	 mov [code_seg],ax		; eliminate relocation entry
@@ -3797,10 +3980,18 @@ initialize proc
 	int 21h
 	mov @word [old_int2f+0],bx
 	mov @word [old_int2f+2],es
+IFDEF IBMPC
 	mov ax,3515h			; getvect --> es:bx
 	int 21h
 	mov @word [old_int15+0],bx
 	mov @word [old_int15+2],es
+ENDIF ; IBMPC
+IFDEF NEC98
+	mov ax,351Fh			; getvect --> es:bx
+	int 21h
+	mov @word [old_int1f+0],bx
+	mov @word [old_int1f+2],es
+ENDIF ; NEC98
 
 	; *****************  handle LOG mode
 
@@ -3867,9 +4058,23 @@ ENDIF
 	mov ax,252Fh			; install own INT2Fh
 	mov dx,offset int2f_handler
 	int 21h
+IFDEF IBMPC
 	mov ax,2515h			; install own INT15h
 	mov dx,offset int15_handler
 	int 21h
+ENDIF ; IBMPC
+IFDEF NEC98
+	mov ax,251Fh			; install own INT1Fh
+	mov dx,offset int1f_handler
+	int 21h
+	; NEC98: clear amount of extended memory for BIOS
+	push ds
+	push 0
+	pop ds
+	mov @byte ds:[0401h], 0	; NEC98: extended memory (1M~16M by 128K)
+	mov @word ds:[0594h], 0	; NEC98: extended memory (above 16M by 1M)
+	pop ds
+ENDIF ; NEC98
 
 ; driver init done
 
@@ -3921,6 +4126,105 @@ init_interrupt proc far
 	pop di
 	ret
 init_interrupt endp
+
+IFDEF NEC98
+;******************************************************************************
+; NEC98: get amount of extended memory
+
+fake_int15_8a:
+fake_int15_e801:
+fake_int15_nosupport:
+	mov ah,86h
+	stc
+	ret
+
+e820_nec:
+e820_nec_1m  E820MAP < 100000h,0, 0,0, 1>
+e820_nec_16m E820MAP <1000000h,0, 0,0, 0>
+e820_nec_end:
+e820_nec_size = e820_nec_end - e820_nec
+
+fake_int15_e820 proc
+	cmp edx,SMAP
+	jne fake_int15_nosupport
+	cmp ecx,20
+	jb fake_int15_nosupport
+	cmp ebx, e820_nec_size
+	ja @@e820_nocopy
+	call build_e820map
+@@e820_copy:
+	push cx
+	push si
+	push di
+	push ds
+	lea si,[bx + OFFSET e820_nec]
+	;mov cx,20
+	push cs
+	pop ds
+	;cld
+	rep movsb
+	pop ds
+	pop di
+	pop si
+	pop cx
+	add bx,cx
+	jmp short @@e820_ok
+@@e820_nocopy:
+	xor ebx,ebx
+	xor ecx,ecx
+@@e820_ok:
+	mov eax,SMAP
+	clc
+	ret
+fake_int15_e820 endp
+
+build_e820map proc
+	push eax
+	push edx
+	xor ax,ax
+	push ds
+	mov ds,ax
+	movzx eax,@byte ds:[0401h]	; NEC98: extended memory (1M~16M by 128K)
+	movzx edx,@word ds:[0594h]	; NEC98: extended memory (above 16M by 1M)
+	pop ds
+	cmp al,78h
+	je @@nohole
+; 1..15M and 16M.. (with memory hole)
+	shl eax,17
+	mov [e820_nec_1m.lenlow],eax
+	test dx,dx
+	jne @@nec1m_16m
+	jmp short @@exit
+@@nec1m_16m:
+	shl edx,20
+	mov [e820_nec_16m.lenlow],edx
+	mov byte ptr [e820_nec_16m.type_],1
+	jmp short @@exit
+; 1M.. (without memory hole)
+@@nohole:
+	shl eax,17
+	shl edx,20
+	add eax,edx
+	mov [e820_nec_1m.lenlow], eax
+@@exit:
+	pop edx
+	pop eax
+	ret
+build_e820map endp
+
+fake_int15_88 proc
+	push ds
+	xor ax,ax
+	mov ds,ax
+	mov al,@byte ds:[0401h]	; NEC98: extended memory (1M~16M by 128K)
+	shl ax,7
+	pop ds
+	clc
+	ret
+fake_int15_88 endp
+
+ENDIF ; NEC98
+
 
 _TEXT ends
 
